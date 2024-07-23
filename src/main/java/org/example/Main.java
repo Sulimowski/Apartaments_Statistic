@@ -1,14 +1,16 @@
 package org.example;
+
 import javax.swing.*;
 import java.awt.*;
 import java.awt.event.ActionEvent;
 import java.awt.event.ActionListener;
+import java.io.IOException;
 import java.util.*;
 import java.util.List;
 import java.util.stream.Collectors;
 
 public class Main {
-    private static Map<String, City> cities = new HashMap<>();
+    protected static Map<String, City> cities = new HashMap<>();
     private static City selectedCity;
 
     public static void main(String[] args) {
@@ -29,6 +31,8 @@ public class Main {
             progressBar.setIndeterminate(true);
             progressBar.setVisible(false);
 
+            JLabel selectedCityLabel = new JLabel("Selected City: None");
+
             JPanel buttonPanel = new JPanel();
             buttonPanel.add(scrapeButton);
             buttonPanel.add(avgPriceButton);
@@ -39,6 +43,7 @@ public class Main {
             mainPanel.add(buttonPanel, BorderLayout.NORTH);
             mainPanel.add(scrollPane, BorderLayout.CENTER);
             mainPanel.add(progressBar, BorderLayout.SOUTH);
+            mainPanel.add(selectedCityLabel, BorderLayout.EAST);
 
             frame.getContentPane().add(mainPanel);
             frame.setVisible(true);
@@ -61,9 +66,10 @@ public class Main {
                             try {
                                 cities = get();
                                 selectedCity = null; // Reset selected city after scraping
+                                selectedCityLabel.setText("Selected City: None");
                                 resultArea.setText("Scraping completed. Cities available:\n" + String.join("\n", cities.keySet()));
                             } catch (Exception ex) {
-                                resultArea.setText("Failed to scrape apartments.");
+                                resultArea.setText("Failed to scrape apartments, try one more time.");
                             } finally {
                                 progressBar.setVisible(false);
                             }
@@ -96,21 +102,70 @@ public class Main {
                             if (count < 1) {
                                 throw new NumberFormatException();
                             }
-                            count = Math.min(count, selectedCity.getCityApart().size());
 
-                            StringBuilder result = new StringBuilder();
-                            int i = 0;
-                            for (Apartamets apartamets : selectedCity.getCityApart().values()) {
-                                if (i >= count) break;
-                                result.append(apartamets).append("\n\n");
-                                i++;
+                            if (count > selectedCity.getCityApart().size()) {
+                                // Scrape additional apartments for the city
+                                progressBar.setVisible(true);
+                                SwingWorker<Void, Void> worker = new SwingWorker<Void, Void>() {
+                                    @Override
+                                    protected Void doInBackground() throws Exception {
+                                        int requiredCount = count - selectedCity.getCityApart().size();
+                                        scrapeAdditionalApartmentsForCity(selectedCity.getCity_name(), requiredCount);
+                                        return null;
+                                    }
+
+                                    @Override
+                                    protected void done() {
+                                        try {
+                                            // Display apartments
+                                            StringBuilder result = new StringBuilder();
+                                            int i = 0;
+                                            for (Apartamets apartamets : selectedCity.getCityApart().values()) {
+                                                if (i >= count) break;
+                                                result.append(apartamets).append("\n\n");
+                                                i++;
+                                            }
+                                            resultArea.setText(result.toString());
+                                        } catch (Exception ex) {
+                                            resultArea.setText("Failed to load additional apartments.");
+                                        } finally {
+                                            progressBar.setVisible(false);
+                                        }
+                                    }
+                                };
+
+                                worker.execute();
+                            } else {
+                                // Display apartments
+                                StringBuilder result = new StringBuilder();
+                                int i = 0;
+                                for (Apartamets apartamets : selectedCity.getCityApart().values()) {
+                                    if (i >= count) break;
+                                    result.append(apartamets).append("\n\n");
+                                    i++;
+                                }
+                                resultArea.setText(result.toString());
                             }
-                            resultArea.setText(result.toString());
                         } catch (NumberFormatException ex) {
                             resultArea.setText("Invalid number. Please enter a positive integer.");
                         }
                     } else {
                         resultArea.setText("No city selected. Please select a city first.");
+                    }
+                }
+
+                private void scrapeAdditionalApartmentsForCity(String cityName, int requiredCount) throws IOException {
+                    Scraper scraper = new Scraper();
+                    Map<String, City> additionalCities = scraper.scrapeApartmentsForCity(cityName);
+
+                    if (additionalCities.containsKey(cityName)) {
+                        City additionalCity = additionalCities.get(cityName);
+                        for (Apartamets apartamets : additionalCity.getCityApart().values()) {
+                            if (!selectedCity.getCityApart().containsKey(apartamets.getID())) {
+                                selectedCity.AddApart(apartamets);
+                                if (--requiredCount <= 0) break;
+                            }
+                        }
                     }
                 }
             });
@@ -128,6 +183,7 @@ public class Main {
 
                     if (selectedCityName != null) {
                         selectedCity = cities.get(selectedCityName);
+                        selectedCityLabel.setText("Selected City: " + selectedCity.getCity_name());
                         resultArea.setText("Selected city: " + selectedCity.getCity_name());
                     }
                 }
