@@ -22,4 +22,4 @@ This project is a Java-based application that scrapes apartment listings from a 
 
 1. Clone the repository:
    ```bash
-   git clone https://github.com/yourusername/your-repository-name.git
+   git clone https://github.com/Sulimowski/Apartaments_Statistic.git

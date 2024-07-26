@@ -6,8 +6,7 @@ import java.awt.event.ActionEvent;
 import java.awt.event.ActionListener;
 import java.io.IOException;
 import java.util.*;
-import java.util.List;
-import java.util.stream.Collectors;
+
 
 public class Main {
     protected static Map<String, City> cities = new HashMap<>();
@@ -69,7 +68,7 @@ public class Main {
                                 selectedCityLabel.setText("Selected City: None");
                                 resultArea.setText("Scraping completed. Cities available:\n" + String.join("\n", cities.keySet()));
                             } catch (Exception ex) {
-                                resultArea.setText("Failed to scrape apartments, try one more time.");
+                                resultArea.setText("Failed to scrape apartments, please try one more time.");
                             } finally {
                                 progressBar.setVisible(false);
                             }
@@ -116,21 +115,23 @@ public class Main {
 
                                     @Override
                                     protected void done() {
-                                        try {
-                                            // Display apartments
-                                            StringBuilder result = new StringBuilder();
-                                            int i = 0;
-                                            for (Apartamets apartamets : selectedCity.getCityApart().values()) {
-                                                if (i >= count) break;
-                                                result.append(apartamets).append("\n\n");
-                                                i++;
+                                        SwingUtilities.invokeLater(() -> {
+                                            try {
+                                                // Display apartments
+                                                StringBuilder result = new StringBuilder();
+                                                int i = 0;
+                                                for (Apartamets apartamets : selectedCity.getCityApart().values()) {
+                                                    if (i >= count) break;
+                                                    result.append(apartamets).append("\n\n");
+                                                    i++;
+                                                }
+                                                resultArea.setText(result.toString());
+                                            } catch (Exception ex) {
+                                                resultArea.setText("Failed to load additional apartments.");
+                                            } finally {
+                                                progressBar.setVisible(false);
                                             }
-                                            resultArea.setText(result.toString());
-                                        } catch (Exception ex) {
-                                            resultArea.setText("Failed to load additional apartments.");
-                                        } finally {
-                                            progressBar.setVisible(false);
-                                        }
+                                        });
                                     }
                                 };
 
@@ -156,17 +157,7 @@ public class Main {
 
                 private void scrapeAdditionalApartmentsForCity(String cityName, int requiredCount) throws IOException {
                     Scraper scraper = new Scraper();
-                    Map<String, City> additionalCities = scraper.scrapeApartmentsForCity(cityName);
-
-                    if (additionalCities.containsKey(cityName)) {
-                        City additionalCity = additionalCities.get(cityName);
-                        for (Apartamets apartamets : additionalCity.getCityApart().values()) {
-                            if (!selectedCity.getCityApart().containsKey(apartamets.getID())) {
-                                selectedCity.AddApart(apartamets);
-                                if (--requiredCount <= 0) break;
-                            }
-                        }
-                    }
+                    scraper.scrapeAdditionalApartmentsForCity(cityName, requiredCount);
                 }
             });
 

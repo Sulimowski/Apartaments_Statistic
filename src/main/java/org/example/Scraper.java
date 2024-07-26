@@ -11,11 +11,9 @@ import java.util.HashSet;
 import java.util.Map;
 import java.util.Set;
 
-
-
 public class Scraper {
     private static final String BASE_URL = "https://metrohouse.pl/na-sprzedaz/mieszkanie/";
-    private static final String PROPERTY_PATH = "/rynek-wtorny/";
+    private static final String PROPERTY_PATH = "/-/rynek-wtorny/";
     private Set<String> announcementUrls = new HashSet<>();
 
     // Scrapes apartments for all available cities
@@ -23,9 +21,9 @@ public class Scraper {
         return scrapeApartmentsForCity(null);
     }
 
-    // Scrapes apartments for a specific city or all cities if cityName is null
+    // Scrapes apartments for all cities
     public Map<String, City> scrapeApartmentsForCity(String cityName) throws IOException {
-        String targetUrl = cityName != null ? constructCityUrl(cityName) : constructCityUrl("warszawa");
+        String targetUrl =  BASE_URL + PROPERTY_PATH;
         Document mainDoc = Jsoup.connect(targetUrl).get();
 
         extractAnnouncementUrls(mainDoc);
@@ -35,11 +33,13 @@ public class Scraper {
 
     // Constructs the URL for the given city
     private String constructCityUrl(String cityName) {
-        return BASE_URL + cityName.toLowerCase() + PROPERTY_PATH;
+        String clearedCityname = cityName.toLowerCase().replace(",","") .replace("ó", "o").replace("Ł","l").replace("ź","z").replace("ą","a").replace("ć","c");
+        return BASE_URL + clearedCityname + PROPERTY_PATH;
     }
 
     // Extracts announcement URLs from the main document
     private void extractAnnouncementUrls(Document document) {
+        announcementUrls.clear();
         Elements links = document.select("a[href*='/nieruchomosc/']");
         for (Element link : links) {
             announcementUrls.add(link.absUrl("href"));
@@ -85,29 +85,33 @@ public class Scraper {
 
     // Extracts city name from the location string
     private String getCityNameFromLocation(String location) {
-        if (location != null) {
+        if (location != null  && !location.trim().isEmpty()) {
             String[] parts = location.split("\\s+");
             if (parts.length >= 4) {
-                return parts[3]; // Assuming the city name is the fourth word
+                return parts[3]; //the city name is the fourth word
             }
         }
         return null;
     }
 
     // Method to get the URL of the next page for pagination
-    private String getNextPageUrl(Document document) {
-        Element nextPageLink = document.selectFirst("a.next");
-        return nextPageLink != null ? nextPageLink.absUrl("href") : null;
+    private String getNextPageUrl(String currentUrl, int currentPage) {
+        return currentUrl + "/page-" + currentPage;
     }
 
     // Method to handle scraping of additional apartments for pagination
     public void scrapeAdditionalApartmentsForCity(String cityName, int requiredCount) throws IOException {
         String targetUrl = constructCityUrl(cityName);
+        System.out.println("Starting URL: " + targetUrl);
         int totalScraped = 0;
+        int currentPage = 1;
 
         while (requiredCount > 0) {
+            System.out.println("Fetching page: " + targetUrl);
             Document mainDoc = Jsoup.connect(targetUrl).get();
             Elements links = mainDoc.select("a[href*='/nieruchomosc/']");
+
+            System.out.println("Found " + links.size() + " links on the page.");
 
             for (Element link : links) {
                 if (requiredCount <= 0) break;
@@ -128,19 +132,32 @@ public class Scraper {
                     }
 
                     String foundCityName = getCityNameFromLocation(apartment.getLocation());
-                    if (foundCityName != null && cityName.equalsIgnoreCase(foundCityName)) {
-                        Main.cities.computeIfAbsent(foundCityName, City::new).AddApart(apartment);
-                        System.out.println("Added apartment: " + apartment);
-                        requiredCount--;
-                        totalScraped++;
+                    if (cityName.equalsIgnoreCase(foundCityName)) {
+                        City city = Main.cities.computeIfAbsent(foundCityName, City::new);
+                        if (!city.getCityApart().containsKey(apartment.getID())) {
+                            city.AddApart(apartment);
+                            System.out.println("Added apartment: " + apartment);
+                            requiredCount--;
+                            totalScraped++;
+                        } else {
+                            System.out.println("Skipped duplicate apartment: " + apartment.getID());
+                        }
                     } else {
                         System.out.println("Skipped apartment in different city: " + apartment.getLocation());
                     }
+                } else {
+                    System.out.println("Skipped already processed URL: " + url);
                 }
             }
 
-            targetUrl = getNextPageUrl(mainDoc);
-            if (targetUrl == null) break; // No more pages
+            currentPage++;
+            targetUrl = getNextPageUrl(targetUrl, currentPage);
+
+            // If we run out of pages, stop scraping
+            if (targetUrl == null) {
+                System.out.println("No more pages to fetch.");
+                break;
+            }
         }
 
         System.out.println("Total new apartments scraped: " + totalScraped);
